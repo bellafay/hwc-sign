@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.3.3] - 2026-10-21
+
+### Added
+- 清单自动补给：待实现条目少于 3 条时，按仓库现状让模型提 5 个「本工具确实还缺、且能用一条命令验证」的小功能，
+  经 slug 去重与格式校验后追加到 `scripts/feature-backlog.md`。解决的是展览馆 +200/天 的长期燃料问题，
+  而不是只够跑 11 天的手写清单。
+- `scripts/daily-feature.mjs` 改为可导入：导出 `parseBacklog` / `takenSlugs` / `validateBacklogAdditions` /
+  `refillBacklog`，并只在被直接执行时跑主流程，单测不再触发真实提交。
+
+### Fixed
+- 补条目失败不再阻断当天发版（只告警），避免模型抖一下就把 200 分丢掉。
+- 支持 `HWC_BACKLOG_FILE` 覆盖清单路径，便于在副本上验证补给逻辑而不污染真实清单。
+
+### Tests
+- 新增 `test/daily-feature.test.mjs`（11 项）：清单解析、slug 占用去重、补给校验、JSON 提取。
+
 ## [1.3.2] - 2026-10-21
 
 ### Fixed

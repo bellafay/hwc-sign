@@ -20,9 +20,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(new URL("..", import.meta.url).pathname);
-const BACKLOG = path.join(ROOT, "scripts/feature-backlog.md");
+const BACKLOG = process.env.HWC_BACKLOG_FILE || path.join(ROOT, "scripts/feature-backlog.md");
 const LOG_DIR = process.env.HWC_FEATURE_LOG_DIR || path.join(ROOT, "scripts/logs");
 const AXON = process.env.AXONHUB_URL || "http://192.168.8.199:8090/v1";
 const KEY_FILE = process.env.AXONHUB_KEY_FILE || path.join(process.env.HOME || "", ".pi-adhoc/hwc-grow-fix/.axonhub-key");
@@ -60,7 +61,7 @@ function gitDirty() {
 }
 
 /** 解析清单：返回 [{done, slug, spec}]，保持文件顺序 */
-function parseBacklog(text) {
+export function parseBacklog(text) {
   const items = [];
   for (const line of text.split("\n")) {
     const m = line.match(/^- \[( |x)\] ([a-z0-9-]+) \| (.+)$/);
@@ -146,14 +147,14 @@ async function callModel(prompt) {
   return { text, usage: j.usage || {} };
 }
 
-function extractJson(text) {
+export function extractJson(text) {
   const s = text.indexOf("{");
   const e = text.lastIndexOf("}");
   if (s < 0 || e < s) throw new Error("模型输出里没有 JSON");
   return JSON.parse(text.slice(s, e + 1));
 }
 
-function validate(out, slug) {
+export function validateFeature(out, slug) {
   const want = [`lib/cmd/${slug}.mjs`, `test/${slug}.test.mjs`];
   if (!out || typeof out !== "object") throw new Error("输出不是对象");
   if (out.slug !== slug) throw new Error(`slug 不匹配：${out.slug}`);
@@ -207,6 +208,68 @@ function markDone(slug) {
   fs.writeFileSync(p, next);
 }
 
+/** 已占用的 slug：lib/cmd 下已有子命令 + 清单里出现过的条目，防止重复实现同一个功能 */
+export function takenSlugs(cmdDir, backlogText) {
+  const names = new Set();
+  try {
+    for (const f of fs.readdirSync(cmdDir)) {
+      if (f.endsWith(".mjs")) names.add(f.slice(0, -4));
+    }
+  } catch { /* 目录不存在就当没有子命令 */ }
+  for (const item of parseBacklog(backlogText)) names.add(item.slug);
+  return names;
+}
+
+/** 校验模型补的清单条目：slug 形如 kebab-case、规格里必须带可验证的调用方式、不能与已占用 slug 重复 */
+export function validateBacklogAdditions(raw, taken) {
+  if (!Array.isArray(raw)) throw new Error("补条目需要数组");
+  if (raw.length < 3) throw new Error("至少补 3 条，避免明后天就断供");
+  const seen = new Set(taken);
+  const out = [];
+  for (const it of raw) {
+    const slug = String(it?.slug || "").trim();
+    const spec = String(it?.spec || "").trim();
+    if (!/^[a-z][a-z0-9-]{1,20}$/.test(slug)) throw new Error(`slug 不合规：${slug}`);
+    if (seen.has(slug)) throw new Error(`slug 重复：${slug}`);
+    if (spec.length < 20) throw new Error(`${slug} 的规格太短，无法验证`);
+    if (!spec.includes("`hwc-sign")) throw new Error(`${slug} 的规格里必须写出实际调用方式（\`hwc-sign ...\`）`);
+    seen.add(slug);
+    out.push({ slug, spec });
+  }
+  return out;
+}
+
+/**
+ * 清单快用完时让模型按仓库现状补条目。
+ * 为什么不让它凭空想：只允许「这个工具真实缺的东西」，所以把已有子命令一起喂进去，并禁用重复 slug。
+ */
+export async function refillBacklog(ctx, backlogText) {
+  const taken = [...takenSlugs(path.join(ROOT, "lib/cmd"), backlogText)];
+  const prompt = `你在维护一个真实的 CLI 工具仓库 hwc-sign（华为云 API 签名与调试）。请提出 5 个「它确实还缺、且能在 5 分钟内验证」的小功能，作为未来几天的日更清单。
+
+${ctx}
+
+已经存在的子命令（严禁重复）：${taken.join(", ")}
+
+只输出 JSON 数组，不要代码围栏：
+[{"slug":"kebab-case-短名","spec":"一句话规格，必须包含实际调用方式，形如 \`hwc-sign <slug> ...\` 并说明验证点"}]
+
+要求：
+1. 每个功能必须能用一条命令演示，且输出可被肉眼判断对错
+2. 只做本工具相关（签名/调试/凭证/请求重放），不要扩成别的软件
+3. 纯本地实现，不新增依赖，不联网
+4. 规格里不要出现「支持所有」「完善」「优化体验」这类无法验证的词`;
+  const { text } = await callModel(prompt);
+  const start = text.indexOf("[");
+  const end = text.lastIndexOf("]");
+  if (start < 0 || end < start) throw new Error("补条目输出里没有 JSON 数组");
+  const items = validateBacklogAdditions(JSON.parse(text.slice(start, end + 1)), taken);
+  const lines = items.map((i) => `- [ ] ${i.slug} | ${i.spec}`).join("\n");
+  fs.writeFileSync(BACKLOG, fs.readFileSync(BACKLOG, "utf8").replace(/\n*$/, "\n") + lines + "\n");
+  log(`清单已补 ${items.length} 条：${items.map((i) => i.slug).join(", ")}`);
+  return items.length;
+}
+
 async function main() {
   const backlog = parseBacklog(fs.readFileSync(BACKLOG, "utf8"));
   const pending = backlog.filter((x) => !x.done);
@@ -214,6 +277,19 @@ async function main() {
   log(`清单共 ${backlog.length} 条，已完成 ${doneCount}，待实现 ${pending.length}`);
 
   if (CHECK_ONLY) return 0;
+  if (DRY) {
+    console.log(buildPrompt(pending[0] || { slug: "sample", spec: "示例规格" }, repoContext(), "").slice(0, 3000));
+    return 0;
+  }
+  // 清单少于 3 条就补货：断供一天就少 200 分，补货失败不阻断当天发版
+  if (pending.length < 3) {
+    try {
+      await refillBacklog(repoContext(), fs.readFileSync(BACKLOG, "utf8"));
+    } catch (e) {
+      log(`补条目失败（不影响今天发版）：${String(e.message).slice(0, 200)}`);
+      bark("hwc-sign 功能清单补给失败", `清单只剩 ${pending.length} 条，今天仍会发版；请人工补 scripts/feature-backlog.md`, "timeSensitive");
+    }
+  }
   if (!pending.length) {
     log("清单已空：不投旧版本，等补条目");
     bark("展览馆：功能清单已用完", "hwc-sign 没有待实现条目，今天不会发新版，+200 未领。补 scripts/feature-backlog.md 即可恢复。", "timeSensitive");
@@ -222,8 +298,12 @@ async function main() {
 
   const item = pending[0];
   const ctx = repoContext();
-  if (DRY) {
-    console.log(buildPrompt(item, ctx, "").slice(0, 3000));
+
+  // 当天已发过版就退出：09:40 主跑 + 10:15 补跑都调这个脚本，不能一天撞出两个版本
+  const today = new Date().toISOString().slice(0, 10);
+  const todayCommits = sh("git", ["log", `--since=${today} 00:00`, "--grep=^feat", "--oneline"]).trim();
+  if (todayCommits) {
+    log(`今天已有自动发布的版本提交，跳过：${todayCommits.split("\n")[0]}`);
     return 0;
   }
 
@@ -241,7 +321,7 @@ async function main() {
     try {
       const { text, usage } = await callModel(buildPrompt(item, ctx, lastErr));
       log(`模型返回 ${text.length} 字符，usage=${JSON.stringify(usage)}`);
-      out = validate(extractJson(text), item.slug);
+      out = validateFeature(extractJson(text), item.slug);
     } catch (e) {
       lastErr = String(e.message).slice(0, 300);
       log(`产出不合规：${lastErr}`);
@@ -285,11 +365,16 @@ async function main() {
   return 1;
 }
 
-main().then(
-  (c) => process.exit(c),
-  (e) => {
-    log("致命错误：" + e.message);
-    bark("hwc-sign 每日功能管线异常", String(e.message).slice(0, 150), "timeSensitive");
-    process.exit(2);
-  },
-);
+export { main };
+
+// 只有被直接执行时才跑主流程；被 import 进来（跑单测）不能有副作用
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().then(
+    (c) => process.exit(c),
+    (e) => {
+      log("致命错误：" + e.message);
+      bark("hwc-sign 每日功能管线异常", String(e.message).slice(0, 150), "timeSensitive");
+      process.exit(2);
+    },
+  );
+}
