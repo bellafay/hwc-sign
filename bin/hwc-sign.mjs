@@ -5,6 +5,7 @@
  *   hwc-sign sign -u <url> [-m GET] [-a AK] [-s SK]
  *   hwc-sign call -u <url> [-b '<json>'] [--token-file creds.json]
  *   hwc-sign sts --agency-urn iam::<账号ID>:agency:SELF_VERIFY --out creds.json
+ *   hwc-sign call -u <url> --print-curl
  *
  * 凭证来源优先级：命令行 > 环境变量 HWC_AK / HWC_SK / HWC_TOKEN
  */
@@ -12,8 +13,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { sign } from "../lib/sign.mjs";
 import { assumeAgency } from "../lib/sts.mjs";
+import { toCurl } from "../lib/curl.mjs";
 
-const HELP = `hwc-sign 1.1.0 — 华为云 API 签名与调试 CLI
+const HELP = `hwc-sign 1.2.0 — 华为云 API 签名与调试 CLI
 
 用法:
   hwc-sign sign -u <url> [-m GET] [-b <body>] [-a AK] [-s SK] [--token T] [--json]
@@ -32,6 +34,7 @@ const HELP = `hwc-sign 1.1.0 — 华为云 API 签名与调试 CLI
       --header   额外请求头，形如 "content-type:application/json"，可重复
       --json     只输出 JSON（便于管道处理）
       --timeout  毫秒，默认 30000
+      --print-curl  打印等价 curl 命令（排查 401 时可直接复现），可与其他输出同用
 
 sts 专有参数:
       --agency-urn   委托 URN，形如 iam::<账号ID>:agency:SELF_VERIFY
@@ -65,6 +68,7 @@ function parse(argv) {
     else if (a === "--header") o.headers.push(take(++i, a));
     else if (a === "--timeout") o.timeout = Number(take(++i, a));
     else if (a === "--json") o.json = true;
+    else if (a === "--print-curl") o.printCurl = true;
     else if (a === "--agency-urn") o.agencyUrn = take(++i, a);
     else if (a === "--session") o.session = take(++i, a);
     else if (a === "--duration") o.duration = Number(take(++i, a));
@@ -177,6 +181,8 @@ async function main() {
   const signed = sign({ method: o.method, url: o.url, body, ak, sk, token, headers: extra });
 
   /* ---- sign：只算签名 ---- */
+  if (o.printCurl) console.log(toCurl({ method: o.method, url: o.url, headers: signed.headers, body }) + "\n");
+
   if (cmd === "sign") {
     if (o.json) {
       console.log(JSON.stringify({ url: o.url, method: o.method, headers: signed.headers, stringToSign: signed.stringToSign }, null, 2));
@@ -189,6 +195,7 @@ async function main() {
   }
 
   /* ---- call：发请求 ---- */
+  if (o.printCurl && o.json) console.error(toCurl({ method: o.method, url: o.url, headers: signed.headers, body }));
   const { res, text } = await timedFetch(o.url, {
     method: o.method,
     headers: signed.headers,

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0] - 2026-10-21
+
+### Added
+- `--print-curl`：把已签名请求还原成可直接执行的 curl 命令（`sign` 与 `call` 都支持），
+  排查 401 时不必再手工拼 header —— 漏掉 `x-sdk-date` / `X-Security-Token` 是复现失败最常见的原因。
+- `lib/curl.mjs`：`shellQuote` / `toCurl` / `maskHeaders` 三个纯函数，附 5 条单测。
+
 ## [1.1.0] - 2026-10-21
 
 ### Added
