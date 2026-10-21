@@ -28,7 +28,7 @@ const AXON = process.env.AXONHUB_URL || "http://192.168.8.199:8090/v1";
 const KEY_FILE = process.env.AXONHUB_KEY_FILE || path.join(process.env.HOME || "", ".pi-adhoc/hwc-grow-fix/.axonhub-key");
 const MODEL = process.env.HWC_FEATURE_MODEL || "value";
 const BARK = process.env.BARK_KEY || "sULGWewJg6p8WYJav2q9tb";
-const MAX_TOKENS = Number(process.env.HWC_FEATURE_MAX_TOKENS || 12000);
+const MAX_TOKENS = Number(process.env.HWC_FEATURE_MAX_TOKENS || 48000); // value 是推理模型，实测 reasoning 吃 20k+ token
 
 const argv = process.argv.slice(2);
 const DRY = argv.includes("--dry-run");
@@ -162,7 +162,8 @@ function validate(out, slug) {
   if (JSON.stringify(paths) !== JSON.stringify([...want].sort())) throw new Error(`文件路径不合规：${paths.join(", ")}`);
   for (const f of out.files) {
     if (typeof f.content !== "string" || f.content.length < 200) throw new Error(`${f.path} 内容过短`);
-    if (!f.content.includes("export default")) throw new Error(`${f.path} 缺少 export default`);
+    // 只有命令模块需要 export default；测试文件用 node:test 的具名导出
+    if (f.path.startsWith("lib/cmd/") && !f.content.includes("export default")) throw new Error(`${f.path} 缺少 export default`);
     if (fs.existsSync(path.join(ROOT, f.path))) throw new Error(`${f.path} 已存在，拒绝覆盖`);
   }
   if (!out.title || !out.changelog) throw new Error("缺少 title 或 changelog");

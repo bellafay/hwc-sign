@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2] - 2026-10-21
+
+### Fixed
+- `scripts/daily-feature.mjs`：默认 `max_tokens` 提到 48000（推理模型光思考就吃 20000+ token，
+  原来的 12000 会让 content 直接为空）；校验器不再要求测试文件含 `export default`
+  —— 该约束只对 `lib/cmd/*.mjs` 有效，误判会让合格产出被丢弃。
+
 ## [1.3.1] - 2026-10-21
 
 ### Added
