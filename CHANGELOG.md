@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.4] - 2026-10-22
+
+### Fixed
+
+- **daily-feature 用 UTC 日期判断「今天是否已发版」**：04:40 CST 跑时 UTC 还是前一天，`--since` 落到前一天 00:00 会把昨晚提交误判成今天已发版而整天空转；改用 Asia/Shanghai 本地日期，并给 `git log` 显式加上 `--until` 上界。
+
 ## [1.3.3] - 2026-10-21
 
 ### Added

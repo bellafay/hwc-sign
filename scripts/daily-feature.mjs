@@ -32,6 +32,15 @@ const BARK = process.env.BARK_KEY || "sULGWewJg6p8WYJav2q9tb";
 const MAX_TOKENS = Number(process.env.HWC_FEATURE_MAX_TOKENS || 48000); // value 是推理模型，实测 reasoning 吃 20k+ token
 
 const argv = process.argv.slice(2);
+/** 本地（Asia/Shanghai）日期 YYYY-MM-DD。
+ * 为什么不用 toISOString：cron 在 04:40 CST 跑，那一刻 UTC 还是前一天 20:40，
+ * 用 UTC 日期会拿「前一天 00:00」当起点，把昨晚 22 点的提交误判成「今天已发过版」
+ * 而整天跳过（2026-10-22 实测就是这样空转的）。 */
+const LOCAL_TZ = process.env.HWC_TZ || "Asia/Shanghai";
+function localDate(d = new Date()) {
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: LOCAL_TZ }).format(d);
+}
+
 const DRY = argv.includes("--dry-run");
 const CHECK_ONLY = argv.includes("--check");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -194,7 +203,7 @@ function bumpVersion() {
 function writeChangelog(version, title, changelog, slug) {
   const p = path.join(ROOT, "CHANGELOG.md");
   const text = fs.readFileSync(p, "utf8");
-  const date = new Date().toISOString().slice(0, 10);
+  const date = localDate();
   const entry = `## [${version}] - ${date}\n\n### Added\n\n- **${title}**（\`${slug}\`）：${changelog}\n\n`;
   const i = text.indexOf("## [") >= 0 ? text.indexOf("## [") : text.indexOf("## ");
   fs.writeFileSync(p, i >= 0 ? text.slice(0, i) + entry + text.slice(i) : text + "\n" + entry);
@@ -300,8 +309,16 @@ async function main() {
   const ctx = repoContext();
 
   // 当天已发过版就退出：09:40 主跑 + 10:15 补跑都调这个脚本，不能一天撞出两个版本
-  const today = new Date().toISOString().slice(0, 10);
-  const todayCommits = sh("git", ["log", `--since=${today} 00:00`, "--grep=^feat", "--oneline"]).trim();
+  // 当天已发过版就退出：主跑 + 补跑都调这个脚本，不能一天撞出两个版本。
+  // 用本地日期并显式给出 until，避免「--since 只有下界」把更早的提交也算进来。
+  const today = localDate();
+  const todayCommits = sh("git", [
+    "log",
+    `--since=${today} 00:00:00`,
+    `--until=${today} 23:59:59`,
+    "--grep=^feat",
+    "--oneline",
+  ]).trim();
   if (todayCommits) {
     log(`今天已有自动发布的版本提交，跳过：${todayCommits.split("\n")[0]}`);
     return 0;
