@@ -11,7 +11,7 @@
 
 ## 待实现
 
-- [ ] probe | `hwc-sign probe -u <url>` 发一次无签名 GET/HEAD，打印状态码、耗时毫秒、关键响应头（x-request-id / content-type / retry-after），用于判断 401 是网络还是签名问题
+- [x] probe | `hwc-sign probe -u <url>` 发一次无签名 GET/HEAD，打印状态码、耗时毫秒、关键响应头（x-request-id / content-type / retry-after），用于判断 401 是网络还是签名问题
 - [ ] env | `hwc-sign env` 打印当前生效的 AK/SK/Token 来源（命令行 / 环境变量 / --token-file 文件），SK 与 Token 只显示前 4 位加星号
 - [ ] verify | `hwc-sign verify -u <url>` 本地重算一遍 canonical request 与 signature 并打印，便于和抓包结果逐行对账
 - [ ] retry | `hwc-sign call -u <url> --retry 3 --retry-delay 800` 对 5xx 与网络错误按次数重试，最终结果与总耗时一起输出
