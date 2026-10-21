@@ -16,6 +16,11 @@
 
 这三个坑是我在接华为云 STS + 费用中心接口时逐个撞出来的，单测里各有一条用例钉住，防止以后改回旧写法。
 
+## 变更记录
+
+- **v1.1.0** — 新增 `hwc-sign sts` 子命令：一条命令完成 AssumeAgency 自委托换取临时凭证，凭证可落盘（0600）并供 `--token-file` 复用；把 `policy` 必须为字符串、返回字段下划线风格两个坑写进单测。
+- **v1.0.0** — `sign` / `call` 两个子命令，SDK-HMAC-SHA256 实现，固化日期格式、结尾斜杠、STS token 三个 401 陷阱。
+
 ## 安装
 
 ```bash
@@ -59,7 +64,23 @@ HWC_AK=xxx HWC_SK=yyy hwc-sign call \
 { "status": 200, "ok": true, "body": { "projects": [ ... ] } }
 ```
 
-### 3. 用 STS 临时凭证换永久安全的调用方式
+### 3. 一条命令换 STS 临时凭证（v1.1.0+）
+
+```bash
+# 换取并落盘（文件权限 0600）
+hwc-sign sts \
+  --agency-urn iam::<账号ID>:agency:SELF_VERIFY \
+  --duration 900 \
+  --out ~/.hwc-sts.json
+
+# 之后所有调用直接复用，无需再手动传三件套
+hwc-sign call -u https://sts.cn-north-4.myhuaweicloud.com/v5/caller-identity \
+  --token-file ~/.hwc-sts.json --json
+```
+
+`policy` 由 CLI 自动按最小权限合成（默认只授 `sts::GetCallerIdentity`，可用 `--actions` 追加），不需要自己拼那个「必须是字符串」的 JSON。
+
+### 4. 手工走一遍 STS（了解底层）
 
 先自委托换临时凭证（需要 IAM 里存在一个信任本账号的委托）：
 
@@ -107,6 +128,7 @@ HWC_AK=<access_key_id> HWC_SK=<secret_access_key> hwc-sign call \
 | `--header` | 额外参与签名的头，如 `--header content-type:application/json`，可重复 |
 | `--json` | 只输出 JSON，方便管道 |
 | `--timeout` | 毫秒，默认 30000 |
+| `--token-file` | 从 `hwc-sign sts --out` 的产物读临时凭证 |
 
 退出码：`0` 成功，`1` 接口返回非 2xx，`2` 参数或凭证错误。
 
@@ -116,11 +138,12 @@ HWC_AK=<access_key_id> HWC_SK=<secret_access_key> hwc-sign call \
 npm test        # 等价于 node --test test/
 ```
 
-8 条用例覆盖：日期格式、结尾斜杠、query 排序与编码、临时凭证注入、CanonicalRequest 六段结构、签名敏感性与稳定性、缺凭证报错。
+13 条用例覆盖：日期格式、结尾斜杠、query 排序与编码、临时凭证注入、CanonicalRequest 六段结构、签名敏感性与稳定性、缺凭证报错；以及 STS 的 policy 字符串化、下划线字段归一、缺 token 判定、服务端错误透出。
 
 ## 已知边界
 
 - 只实现 `SDK-HMAC-SHA256`（华为云当前主力算法），不含 AK-SK 的 `AK/SK` 旧算法与纯 Token 鉴权。
+- STS 默认落在 `cn-north-4`；其他区域需自行 `sign` 后手工调用。
 - 不处理 multipart 文件上传的签名（这类请求体哈希按空串签即可，用 `-m POST` 不带 `-b` 即可）。
 - query 里的数组参数按单值处理，未做 `key=a&key=b` 之外的方言适配。
 
