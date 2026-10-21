@@ -4,7 +4,8 @@ import { shellQuote, toCurl, maskHeaders } from "../lib/curl.mjs";
 
 test("shellQuote 保留安全字符原样", () => {
   assert.equal(shellQuote("abc-123_x"), "abc-123_x");
-  assert.equal(shellQuote("https://a.b/c?d=1&e=2"), "https://a.b/c?d=1&e=2");
+  // ? & 不在安全字符集内，必须加引号，否则 shell 会把 & 当后台执行
+  assert.equal(shellQuote("https://a.b/c?d=1&e=2"), "'https://a.b/c?d=1&e=2'");
 });
 
 test("shellQuote 转义单引号与空格", () => {
