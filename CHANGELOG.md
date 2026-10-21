@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0] - 2026-10-21
+
+### Added
+- 可插拔子命令：`lib/cmd/<name>.mjs` 一个文件即一个子命令，`bin/hwc-sign.mjs` 无需再改，
+  默认导出 `{ name, aliases, run(argv) }`，由 `lib/commands.mjs` 自动发现并注册。
+  重名（含与 `sign/call/sts` 撞车、两文件抢同一名字）直接抛错，不静默覆盖。
+- `scripts/daily-feature.mjs`：每日新功能管线 —— 从 `scripts/feature-backlog.md` 取一条规格，
+  实现成子命令 + 单测，`npm test` 全绿才升 patch 版本、写 CHANGELOG、提交推送；
+  测试失败或产出不合规就回滚，绝不留下半成品。
+- `scripts/feature-backlog.md`：12 条真实小型功能规格（probe / env / verify / retry …）。
+
+### Notes
+- 扩展子命令自行解析参数，不受主 CLI 参数白名单限制；`lib/cmd/_*.mjs` 不参与加载，可放共享辅助模块。
+
 ## [1.2.0] - 2026-10-21
 
 ### Added

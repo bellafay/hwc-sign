@@ -14,6 +14,7 @@ import path from "node:path";
 import { sign } from "../lib/sign.mjs";
 import { assumeAgency } from "../lib/sts.mjs";
 import { toCurl } from "../lib/curl.mjs";
+import { loadCommands } from "../lib/commands.mjs";
 
 const HELP = `hwc-sign 1.2.0 — 华为云 API 签名与调试 CLI
 
@@ -21,6 +22,7 @@ const HELP = `hwc-sign 1.2.0 — 华为云 API 签名与调试 CLI
   hwc-sign sign -u <url> [-m GET] [-b <body>] [-a AK] [-s SK] [--token T] [--json]
   hwc-sign call -u <url> [-m GET] [-b <body>] [-a AK] [-s SK] [--token T] [--timeout ms]
   hwc-sign sts  --agency-urn <urn> [-a AK] [-s SK] [--session name] [--duration 900] [--out creds.json]
+  hwc-sign <扩展子命令> ...   # 来自 lib/cmd/，如 probe / env / verify（按需自动新增）
   hwc-sign --help
 
 通用参数:
@@ -139,7 +141,19 @@ async function main() {
     return 0;
   }
   const cmd = argv[0];
-  if (!["sign", "call", "sts"].includes(cmd)) throw new Error(`未知子命令: ${cmd}（可用 sign / call / sts）`);
+
+  /* ---- 可插拔子命令：lib/cmd/*.mjs，一个文件一个子命令 ---- */
+  // @anchor:register-command —— 新增子命令只需在 lib/cmd/ 放文件，无需改这里
+  const plugins = await loadCommands();
+  if (plugins.has(cmd)) {
+    const code = await plugins.get(cmd).run(argv.slice(1));
+    return typeof code === "number" ? code : 0;
+  }
+
+  if (!["sign", "call", "sts"].includes(cmd)) {
+    const all = ["sign", "call", "sts", ...plugins.keys()].join(" / ");
+    throw new Error(`未知子命令: ${cmd}（可用 ${all}）`);
+  }
 
   const o = parse(argv.slice(1));
   const { ak, sk, token } = resolveCreds(o);

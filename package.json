@@ -1,6 +1,6 @@
 {
   "name": "hwc-sign",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "华为云 API 签名与调试 CLI：零依赖实现 SDK-HMAC-SHA256，支持永久 AK/SK 与 STS 临时凭证",
   "type": "module",
   "bin": {
