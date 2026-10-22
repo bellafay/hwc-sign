@@ -18,8 +18,7 @@
 
 ## 变更记录
 
-- **v1.1.0** — 新增 `hwc-sign sts` 子命令：一条命令完成 AssumeAgency 自委托换取临时凭证，凭证可落盘（0600）并供 `--token-file` 复用；把 `policy` 必须为字符串、返回字段下划线风格两个坑写进单测。
-- **v1.0.0** — `sign` / `call` 两个子命令，SDK-HMAC-SHA256 实现，固化日期格式、结尾斜杠、STS token 三个 401 陷阱。
+完整版本历史见 [CHANGELOG.md](CHANGELOG.md)（本 README 不维护第二份，避免两处不一致）。
 
 ## 安装
 
